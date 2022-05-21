@@ -1,200 +1,289 @@
-/*
-   Copyright (c) 2015, Majenko Technologies
-   All rights reserved.
-
-   Redistribution and use in source and binary forms, with or without modification,
-   are permitted provided that the following conditions are met:
-
- * * Redistributions of source code must retain the above copyright notice, this
-     list of conditions and the following disclaimer.
-
- * * Redistributions in binary form must reproduce the above copyright notice, this
-     list of conditions and the following disclaimer in the documentation and/or
-     other materials provided with the distribution.
-
- * * Neither the name of Majenko Technologies nor the names of its
-     contributors may be used to endorse or promote products derived from
-     this software without specific prior written permission.
-
-   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-   ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-   ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-   ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
+#include <EEPROM.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
+#define EEPROM_SIZE 16
 const char *ssid = "LGMF2";
 const char *password = "abcdefghij";
 
-WebServer server(80);
+AsyncWebServer server(80);
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+
+const char *dosage_1_monday = "dosage11";
+const char *dosage_1_tuesday = "dosage21";
+const char *dosage_1_wednesday = "dosage31";
+const char *dosage_1_thursday = "dosage41";
+const char *dosage_1_friday = "dosage51";
+const char *dosage_1_saturday = "dosage61";
+const char *dosage_1_sunday = "dosage71";
+const char *dosage_2_monday = "dosage12";
+const char *dosage_2_tuesday = "dosage22";
+const char *dosage_2_wednesday = "dosage32";
+const char *dosage_2_thursday = "dosage42";
+const char *dosage_2_friday = "dosage52";
+const char *dosage_2_saturday = "dosage62";
+const char *dosage_2_sunday = "dosage72";
+
+
+int dosage11= 0;
+int dosage21= 0;
+int dosage31= 0;
+int dosage41= 0;
+int dosage51= 0;
+int dosage61= 0;
+int dosage71= 0;
+int dosage12= 0;
+int dosage22= 0;
+int dosage32= 0;
+int dosage42= 0;
+int dosage52= 0;
+int dosage62= 0;
+int dosage72= 0;
 
 const int led = 13;
+char index_html[4000];
 
-void handleRoot() {
-  digitalWrite(led, 1);
-  char temp[400];
-  int sec = millis() / 1000;
-  int min = sec / 60;
-  int hr = min / 60;
+String formattedDate;
+String dayStamp;
+String timeStamp;
 
-           
 
-  server.send(200, "text/html","<html>\
-    <head>\
-        <title> medicine dispenser</title>\
-    </head>\
-    <body>\
-    <style>\
-        body{\
-        background : rgba(0,0,255,0.3);\
-        text-align: center;\
-    }\
-    form{\
-        margin-top : 100px\
-    }\
-    label{\
-        color:white;\
-    }\
-    input{\
-        color:Black ;\
-        background-color: aqua;\
-        border: 1px solid aqua ;\
-        border-radius: 8px;\
-        margin:5px;\
-    }\
-    </style>\
-    <form method=\"POST\">\
-        <table>\
-        <tr class = \"day\">\
-        <th>Day</th>\
-        <th>Medicine 1</th>\
-        <th>Medicine 2</th>\
-        </tr> \
-        <tr>\
-        <td>Monday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Tuesday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Wednesday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Thursday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Friday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Saturday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        <tr>\
-        <td>Sunday</td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        <td><input type=\"number\" id=\"dosage\" name=\"dosage\" step=\"1\" value=\"0\"> <!-- detch from memory --></td>\
-        </tr>\
-        </table>\
-        <label for=\"dosage\">Dosage:</label><input type=\"submit\">\
-    </form>\
-    </body>\
-</html>");
-  digitalWrite(led, 0);
+void get_values_from_eeprom()
+{
+  if (!EEPROM.begin(EEPROM_SIZE))
+  {
+    Serial.println("failed to initialise EEPROM"); return;
+  }
+  dosage11 = EEPROM.read(0);
+  dosage21 = EEPROM.read(1);
+  dosage31 = EEPROM.read(2);
+  dosage41 = EEPROM.read(3);
+  dosage51 = EEPROM.read(4);
+  dosage61 = EEPROM.read(5);
+  dosage71 = EEPROM.read(6);
+  dosage12 = EEPROM.read(7);
+  dosage22 = EEPROM.read(8);
+  dosage32 = EEPROM.read(9);
+  dosage42 = EEPROM.read(10);
+  dosage52 = EEPROM.read(11);
+  dosage62 = EEPROM.read(12);
+  dosage72 = EEPROM.read(13);
 }
 
-void handleNotFound() {
-  digitalWrite(led, 1);
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+void save_values_to_eeprom()
+{
+  if (!EEPROM.begin(EEPROM_SIZE))
+  {
+    Serial.println("failed to initialise EEPROM"); return;
   }
 
-  server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
+  EEPROM.write(0,dosage11);
+  EEPROM.write(1,dosage21);
+  EEPROM.write(2,dosage31);
+  EEPROM.write(3,dosage41);
+  EEPROM.write(4,dosage51);
+  EEPROM.write(5,dosage61);
+  EEPROM.write(6,dosage71);
+  EEPROM.write(7,dosage12);
+  EEPROM.write(8,dosage22);
+  EEPROM.write(9,dosage32);
+  EEPROM.write(10,dosage42);
+  EEPROM.write(11,dosage52);
+  EEPROM.write(12,dosage62);
+  EEPROM.write(13,dosage72);
+  EEPROM.commit();
+  
 }
 
-void setup(void) {
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
-  Serial.begin(115200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
-
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  if (MDNS.begin("esp32")) {
-    Serial.println("MDNS responder started");
-  }
-
-  server.on("/", handleRoot);
-  server.on("/test.svg", drawGraph);
-  server.on("/inline", []() {
-    server.send(200, "text/plain", "this works as well");
-  });
-  server.onNotFound(handleNotFound);
-  server.begin();
-  Serial.println("HTTP server started");
+void get_time()
+{
+  timeClient.update();
+  Serial.println(timeClient.getFormattedTime());
+  Serial.println(timeClient.getDay());
+  
 }
 
-void loop(void) {
-  server.handleClient();
-  delay(2);//allow the cpu to switch to other tasks
+void notFound(AsyncWebServerRequest *request)
+{
+    request->send(404, "text/plain", "Not found");
 }
 
-void drawGraph() {
-  String out = "";
-  char temp[100];
-  out += "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"400\" height=\"150\">\n";
-  out += "<rect width=\"400\" height=\"150\" fill=\"rgb(250, 230, 210)\" stroke-width=\"1\" stroke=\"rgb(0, 0, 0)\" />\n";
-  out += "<g stroke=\"black\">\n";
-  int y = rand() % 130;
-  for (int x = 10; x < 390; x += 10) {
-    int y2 = rand() % 130;
-    sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
-    out += temp;
-    y = y2;
-  }
-  out += "</g>\n</svg>\n";
+void setup(void)
+{
+  
+    pinMode(led, OUTPUT);
+    digitalWrite(led, 0);
+    Serial.begin(115200);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    Serial.println("");
 
-  server.send(200, "image/svg+xml", out);
+    // Wait for connection
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(ssid);
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+    get_values_from_eeprom();
+    timeClient.begin();
+    timeClient.setTimeOffset(19800);
+    
+
+    
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+                snprintf(index_html, 4000, R"rawliteral(<html>
+    <head>
+        <title> medicine dispenser</title>
+    </head>
+    <body>
+    <style>
+        body{
+        background : rgba(0,0,255,0.3);
+        text-align: center;
+    }
+    form{
+        margin-top : 100px
+    }
+    label{
+        color:white;
+        
+        
+    }
+    input{
+        color:Black ;
+        background-color: aqua;
+        border: 1px solid aqua ;
+        border-radius: 8px;
+        margin:5px;
+    }
+    </style>
+    
+    <form action="/get"method="GET">
+        <label for="dosage">Dosage:</label>
+        <table>
+        <tr class = "day">
+        <th>Day</th>
+        <th>Medicine 1</th>
+        <th>Medicine 2</th>
+        </tr> 
+        <tr>
+        <td>Monday</td>
+        <td><input type="number" id="dosage" name="dosage11" step="1" min = 0 max = 10 value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage12" step="1" min = 0 max = 10 value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Tuesday</td>
+        <td><input type="number" id="dosage" name="dosage21" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage22" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Wednesday</td>
+        <td><input type="number" id="dosage" name="dosage31" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage32" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Thursday</td>
+        <td><input type="number" id="dosage" name="dosage41" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage42" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Friday</td>
+        <td><input type="number" id="dosage" name="dosage51" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage52" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Saturday</td>
+        <td><input type="number" id="dosage" name="dosage61" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage62" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        <tr>
+        <td>Sunday</td>
+        <td><input type="number" id="dosage" name="dosage71" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        <td><input type="number" id="dosage" name="dosage72" step="1" min = 0 max = 10  value="%d"> <!-- detch from memory --></td>
+        </tr>
+        </table>
+        <input type="submit">
+    </form>
+
+
+    </body>
+</html>
+)rawliteral",dosage11,dosage12,dosage21,dosage22,dosage31,dosage32,dosage41,dosage42,dosage51,dosage52,dosage61,dosage62,dosage71,dosage72);
+
+                request->send(200, "text/html", index_html); });
+
+    // Send a GET request to <ESP_IP>/get?input1=<inputMessage>
+    server.on("/get", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+    
+    
+    if (request->hasParam(dosage_1_monday)) {
+      dosage11 = (request->getParam(dosage_1_monday)->value().toInt());
+    }
+    if (request->hasParam(dosage_1_tuesday)) {
+      dosage21 = (request->getParam(dosage_1_tuesday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_1_wednesday)) {
+      dosage31 = (request->getParam(dosage_1_wednesday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_1_thursday)) {
+      dosage41 = (request->getParam(dosage_1_thursday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_1_friday)) {
+      dosage51 = (request->getParam(dosage_1_friday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_1_saturday)) {
+      dosage61 = (request->getParam(dosage_1_saturday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_1_sunday)) {
+      dosage71 = (request->getParam(dosage_1_sunday)->value()).toInt();
+    }
+
+    if (request->hasParam(dosage_2_monday)) {
+      dosage12 = (request->getParam(dosage_2_monday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_tuesday)) {
+      dosage22 = (request->getParam(dosage_2_tuesday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_wednesday)) {
+      dosage32 = (request->getParam(dosage_2_wednesday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_thursday)) {
+      dosage42 = (request->getParam(dosage_2_thursday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_friday)) {
+      dosage52 = (request->getParam(dosage_2_friday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_saturday)) {
+      dosage62 = (request->getParam(dosage_2_saturday)->value()).toInt();
+    }
+    if (request->hasParam(dosage_2_sunday)) {
+      dosage72 = (request->getParam(dosage_2_sunday)->value()).toInt();
+    }
+
+    
+    save_values_to_eeprom();
+    request->send(200, "text/html", "HTTP GET request sent to your ESP on input field "); });
+    server.onNotFound(notFound);
+    server.begin();
+    Serial.println("HTTP server started");
+}
+
+void loop(void)
+{
+  get_time();
+  delay(1000);
 }
