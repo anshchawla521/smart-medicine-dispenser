@@ -7,10 +7,14 @@
 #include <ESPAsyncWebServer.h>
 
 
-//save time to eeprom
 //communication between arduino
 //check schedule
-#define EEPROM_SIZE 16
+#define EEPROM_SIZE 64
+#define dispense_trigger 13
+#define was_dispensed 14
+#define timeout 27
+
+
 const char *ssid = "LGMF2";
 const char *password = "abcdefghij";
 
@@ -49,7 +53,7 @@ byte dosage52= 0;
 byte dosage62= 0;
 byte dosage72= 0;
 
-const int led = 13;
+const int led = 2;
 char index_html[6000];
 int day_current = 0;
 
@@ -59,6 +63,7 @@ class my_time{
   byte hours;
   byte minutes;
   char str[16]= "";
+  bool dispensed = false;
   my_time()
   {
     hours = 0;
@@ -100,12 +105,35 @@ void set_time_from_string(const String &time_from_html)
         }
       }
     }
-    Serial.println("hello1");
+
     this->return_string_from_time();
-    Serial.println("hello2");
   }
 void return_string_from_time(){
   snprintf(str,16,"%.2d:%.2d:00.000",hours,minutes);
+}
+
+void save_to_eeprom(int addr)
+{
+  EEPROM.write(addr,byte(hours));
+  EEPROM.write(addr+1,byte(minutes));
+}
+void get_from_eeprom(int addr){
+  hours = EEPROM.read(addr);
+  minutes = EEPROM.read(addr+1);
+  
+  this->return_string_from_time();
+}
+
+bool dispense(int &current_hours , int &current_minutes)
+{
+  int total_minutes = hours*60 + minutes;
+  int current_total_minutes = current_hours*60 + current_minutes;
+  if ((current_total_minutes >= total_minutes)&&(!dispensed)){
+    //dispense    
+    return true;
+  }
+  return false;
+  
 }
   
 };
@@ -125,27 +153,34 @@ my_time time52;
 my_time time62;
 my_time time72;
 
+void send_alert()
+{
+  Serial.println("medicine not taken");
+}
 
-//void write_str_to_eeprom(int addr , const String &strtowrite)
-//{
-//  byte len = strtowrite.length();
-//  EEPROM.write(addr , len);
-//  for (int i = 0 ; i < len ; i++)
-//  {
-//    EEPROM.write(addr +1+i, strtowrite[i]);
-//  }
-//}
-//String read_str_from_eeprom(int addr){
-//  byte len = EEPROM.read(addr);
-//  char my_string[len+1];
-//  for(int i= 0; i< len ; i++)
-//  {
-//    my_string[i] = EEPROM.read(i+1+addr)  ;
-//  }
-//  my_string[len] = '\0';
-//
-//  return String(my_string);
-//}
+void dispense_medicine(byte medicine_number , byte &dosage , my_time &time_obj)
+{
+  //arduino code for dispensing
+  if (medicine_number == 2){
+  time_obj.dispensed = true;
+  Serial.print("dispensing medicine "); 
+  Serial.print(medicine_number);
+  Serial.print(" with dosage ");
+  Serial.println(dosage);
+  }
+  if (medicine_number == 1)
+  {
+    digitalWrite(dispense_trigger , HIGH);
+    if (digitalRead(was_dispensed)){
+      // dispensed 
+      time_obj.dispensed = true;
+      digitalWrite(dispense_trigger , LOW);
+    }else if (digitalRead(timeout)){
+      send_alert();
+    }
+  }
+}
+
 
 
 void check_schedule()
@@ -156,9 +191,107 @@ void check_schedule()
 
   switch(days){
     case 1: //monday
-      if(time11.hours>hours && time11.minutes>minutes && medicine not taken )
+      if(time11.dispense(hours , minutes))
       {
-        //send arduino signal to give
+        //dispense medicine
+        //time11.dispensed = true;
+        dispense_medicine(1 , dosage11 , time11);
+      }
+      if(time12.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time12.dispensed = true;
+        dispense_medicine(2 , dosage12 , time12);
+      }
+      break;
+
+      case 2: //tuesday
+      if(time21.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time21.dispensed = true;
+        dispense_medicine(1 , dosage21 , time21);
+      }
+      if(time22.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time22.dispensed = true;
+        dispense_medicine(2 , dosage22 , time22);
+      }
+      break;
+
+      case 3: //wednesday
+      if(time31.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time31.dispensed = true;
+        dispense_medicine(1 , dosage31 , time31);
+      }
+      if(time32.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time32.dispensed = true;
+        dispense_medicine(2 , dosage32 , time32);
+      }
+      break;
+
+      case 4: //thursday
+      if(time41.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time41.dispensed = true;
+        dispense_medicine(1 , dosage41 , time41);
+      }
+      if(time42.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time42.dispensed = true;
+        dispense_medicine(2 , dosage42 , time42);
+      }
+      break;
+
+      case 5: //friday      
+      if(time51.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time51.dispensed = true;
+        dispense_medicine(1 , dosage51 , time51);
+      }
+      if(time52.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time52.dispensed = true;
+        dispense_medicine(2 , dosage52 , time52);
+      }
+      break;
+
+      case 6: //saturday
+      if(time61.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time61.dispensed = true;
+        dispense_medicine(1 , dosage61 , time61);
+      }
+      if(time62.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time62.dispensed = true;
+        dispense_medicine(2 , dosage62 , time62);
+      }
+      break;
+
+      case 7: //sunday
+      if(time71.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time71.dispensed = true;
+        dispense_medicine(1 , dosage71 , time71);
+      }
+      if(time72.dispense(hours , minutes))
+      {
+        //dispense medicine
+        //time72.dispensed = true;
+        dispense_medicine(2 , dosage72 , time72);
       }
       break;
 
@@ -189,6 +322,20 @@ void get_values_from_eeprom()
   dosage52 = EEPROM.read(11);
   dosage62 = EEPROM.read(12);
   dosage72 = EEPROM.read(13);
+  time11.get_from_eeprom(14);
+  time21.get_from_eeprom(16);
+  time31.get_from_eeprom(18);
+  time41.get_from_eeprom(20);
+  time51.get_from_eeprom(22);
+  time61.get_from_eeprom(24);
+  time71.get_from_eeprom(26);
+  time12.get_from_eeprom(28);
+  time22.get_from_eeprom(30);
+  time32.get_from_eeprom(32);
+  time42.get_from_eeprom(34);
+  time52.get_from_eeprom(36);
+  time62.get_from_eeprom(38);
+  time72.get_from_eeprom(40);
 }
 
 void save_values_to_eeprom()
@@ -212,6 +359,20 @@ void save_values_to_eeprom()
   EEPROM.write(11,dosage52);
   EEPROM.write(12,dosage62);
   EEPROM.write(13,dosage72);
+  time11.save_to_eeprom(14);
+  time21.save_to_eeprom(16);
+  time31.save_to_eeprom(18);
+  time41.save_to_eeprom(20);
+  time51.save_to_eeprom(22);
+  time61.save_to_eeprom(24);
+  time71.save_to_eeprom(26);
+  time12.save_to_eeprom(28);
+  time22.save_to_eeprom(30);
+  time32.save_to_eeprom(32);
+  time42.save_to_eeprom(34);
+  time52.save_to_eeprom(36);
+  time62.save_to_eeprom(38);
+  time72.save_to_eeprom(40);
   EEPROM.commit();
   
 }
@@ -227,6 +388,11 @@ void setup(void)
 {
   
     pinMode(led, OUTPUT);
+    pinMode(dispense_trigger , OUTPUT);
+    digitalWrite(dispense_trigger, LOW);
+    pinMode(was_dispensed , INPUT);
+    pinMode(timeout , INPUT);
+
     digitalWrite(led, 0);
     Serial.begin(115200);
     WiFi.mode(WIFI_STA);
@@ -239,7 +405,7 @@ void setup(void)
         delay(500);
         Serial.print(".");
     }
-
+    digitalWrite(led, 1);
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
@@ -345,10 +511,6 @@ void setup(void)
     </body>
 </html>
 )rawliteral" ,dosage11,time11.str,dosage12,time12.str,dosage21,time21.str,dosage22,time22.str,dosage31,time31.str,dosage32,time32.str,dosage41,time41.str,dosage42,time42.str,dosage51,time51.str,dosage52,time52.str,dosage61,time61.str,dosage62,time62.str,dosage71,time71.str,dosage72,time72.str);
-for ( int i = 0 ; i < 4000 ; i++)
-    {
-      Serial.print(index_html[i]);
-    }
                 request->send(200, "text/html", index_html); });
     
 
@@ -457,11 +619,9 @@ for ( int i = 0 ; i < 4000 ; i++)
       
       time72.set_time_from_string(request->getParam("time72")->value());
     }
-
-    
+  
     save_values_to_eeprom();
-    Serial.println(time11.hours);
-    Serial.println(time11.minutes);
+
     
     request->send(200, "text/html", "HTTP GET request sent to your ESP on input field "); });
     
@@ -474,5 +634,6 @@ for ( int i = 0 ; i < 4000 ; i++)
 void loop(void)
 {
   timeClient.update();
+  check_schedule();
   delay(1000);
 }
