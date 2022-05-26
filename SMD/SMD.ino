@@ -1,19 +1,24 @@
 #include <EEPROM.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
 
+// communication between arduino
+// check schedule
 
-//communication between arduino
-//check schedule
+#define BOTtoken "5225503031:AAFcshlLqmddsVeqWmN0oBo8Dxs_HQNo0t4"
+#define CHAT_ID "1171279947"
 #define EEPROM_SIZE 64
 #define dispense_trigger 13
 #define was_dispensed 14
 #define timeout 27
-
 
 const char *ssid = "LGMF2";
 const char *password = "abcdefghij";
@@ -21,6 +26,9 @@ const char *password = "abcdefghij";
 AsyncWebServer server(80);
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
 
 const char *dosage_1_monday = "dosage11";
 const char *dosage_1_tuesday = "dosage21";
@@ -37,69 +45,74 @@ const char *dosage_2_friday = "dosage52";
 const char *dosage_2_saturday = "dosage62";
 const char *dosage_2_sunday = "dosage72";
 
-
-byte dosage11= 0;
-byte dosage21= 0;
-byte dosage31= 0;
-byte dosage41= 0;
-byte dosage51= 0;
-byte dosage61= 0;
-byte dosage71= 0;
-byte dosage12= 0;
-byte dosage22= 0;
-byte dosage32= 0;
-byte dosage42= 0;
-byte dosage52= 0;
-byte dosage62= 0;
-byte dosage72= 0;
+// byte dosage11= 0;
+// byte dosage21= 0;
+// byte dosage31= 0;
+// byte dosage41= 0;
+// byte dosage51= 0;
+// byte dosage61= 0;
+// byte dosage71= 0;
+// byte dosage12= 0;
+// byte dosage22= 0;
+// byte dosage32= 0;
+// byte dosage42= 0;
+// byte dosage52= 0;
+// byte dosage62= 0;
+// byte dosage72= 0;
 
 const int led = 2;
 char index_html[6000];
-int day_current = 0;
+char redirect_html[500];
 
 
-class my_time{
-  public:
-  byte hours;
-  byte minutes;
-  char str[16]= "";
+class Medicine
+{
+public:
+  byte hours = 0;
+  byte minutes = 0;
+  char str[16] = "";
   bool dispensed = false;
-  my_time()
+  byte amount_dispensed = 0;
+  byte dosage = 0;
+
+  Medicine()
   {
-    hours = 0;
-    minutes = 0;
-    strcpy(str , "00:00:00.000" );
+    strcpy(str, "00:00:00.000");
+    return;
   }
-void set_time_from_string(const String &time_from_html)
+  void set_time_from_string(const String &time_from_html)
   {
     byte len = time_from_html.length();
     int end_index;
-    int substring_number ;
+    int substring_number;
     int start_index;
-    
-    for (end_index = 0 , substring_number = 0 , start_index = 0;end_index < len ; end_index++)
+
+    for (end_index = 0, substring_number = 0, start_index = 0; end_index < len; end_index++)
     {
-      if(time_from_html[end_index] == ':')
+      if (time_from_html[end_index] == ':')
       {
-        
-         Serial.println(time_from_html);
+
+        Serial.println(time_from_html);
         if (substring_number == 0)
         {
-          
-          hours = (time_from_html.substring(start_index , end_index)).toInt();
-        }else if (substring_number == 1)
+
+          hours = (time_from_html.substring(start_index, end_index)).toInt();
+        }
+        else if (substring_number == 1)
         {
-          minutes = (time_from_html.substring(start_index , end_index)).toInt();
+          minutes = (time_from_html.substring(start_index, end_index)).toInt();
         }
         substring_number++;
         start_index = end_index + 1;
-      }else if(end_index == len-1)
+      }
+      else if (end_index == len - 1)
       {
-        //reached last index so remaing part put in string
+        // reached last index so remaing part put in string
         if (substring_number == 0)
         {
-          hours = (time_from_html.substring(start_index )).toInt();
-        }else if (substring_number == 1)
+          hours = (time_from_html.substring(start_index)).toInt();
+        }
+        else if (substring_number == 1)
         {
           minutes = (time_from_html.substring(start_index)).toInt();
         }
@@ -108,318 +121,306 @@ void set_time_from_string(const String &time_from_html)
 
     this->return_string_from_time();
   }
-void return_string_from_time(){
-  snprintf(str,16,"%.2d:%.2d:00.000",hours,minutes);
-}
-
-void save_to_eeprom(int addr)
-{
-  EEPROM.write(addr,byte(hours));
-  EEPROM.write(addr+1,byte(minutes));
-}
-void get_from_eeprom(int addr){
-  hours = EEPROM.read(addr);
-  minutes = EEPROM.read(addr+1);
-  
-  this->return_string_from_time();
-}
-
-bool dispense(int &current_hours , int &current_minutes)
-{
-  int total_minutes = hours*60 + minutes;
-  int current_total_minutes = current_hours*60 + current_minutes;
-  if ((current_total_minutes >= total_minutes)&&(!dispensed)){
-    //dispense    
-    return true;
+  void return_string_from_time()
+  {
+    snprintf(str, 16, "%.2d:%.2d:00.000", hours, minutes);
   }
-  return false;
-  
-}
-  
+
+  void save_to_eeprom(int addr)
+  {
+    EEPROM.write(addr, dosage);
+    EEPROM.write(addr + 1, hours);
+    EEPROM.write(addr + 2, minutes);
+  }
+  void get_from_eeprom(int addr)
+  {
+    dosage = EEPROM.read(addr);
+    hours = EEPROM.read(addr + 1);
+    minutes = EEPROM.read(addr + 2);
+
+    this->return_string_from_time();
+  }
+
+  bool dispense(int &current_hours, int &current_minutes)
+  {
+    int total_minutes = hours * 60 + minutes;
+    int current_total_minutes = current_hours * 60 + current_minutes;
+    if ((current_total_minutes >= total_minutes) && (!dispensed))
+    {
+      // dispense
+      return true;
+    }
+    return false;
+  }
 };
 
-my_time time11;
-my_time time21;
-my_time time31;
-my_time time41;
-my_time time51;
-my_time time61;
-my_time time71;
-my_time time12;
-my_time time22;
-my_time time32;
-my_time time42;
-my_time time52;
-my_time time62;
-my_time time72;
+Medicine time11;
+Medicine time21;
+Medicine time31;
+Medicine time41;
+Medicine time51;
+Medicine time61;
+Medicine time71;
+Medicine time12;
+Medicine time22;
+Medicine time32;
+Medicine time42;
+Medicine time52;
+Medicine time62;
+Medicine time72;
 
 void send_alert()
 {
   Serial.println("medicine not taken");
+  bot.sendMessage(CHAT_ID, "Medicine 1 has not been taken", "");
 }
 
-void dispense_medicine(byte medicine_number , byte &dosage , my_time &time_obj)
+void dispense_medicine(byte medicine_number, byte dosage, Medicine &time_obj)
 {
-  //arduino code for dispensing
-  if (medicine_number == 2){
-  time_obj.dispensed = true;
-  Serial.print("dispensing medicine "); 
-  Serial.print(medicine_number);
-  Serial.print(" with dosage ");
-  Serial.println(dosage);
+  // arduino code for dispensing
+  if (medicine_number == 2)
+  {
+    time_obj.dispensed = true;
+    Serial.print("dispensing medicine ");
+    Serial.print(medicine_number);
+    Serial.print(" with dosage ");
+    Serial.println(dosage);
+    bot.sendMessage(CHAT_ID, "Medicine 2  has been dispensed and taken", "");
   }
   if (medicine_number == 1)
   {
-    digitalWrite(dispense_trigger , HIGH);
-    if (digitalRead(was_dispensed)){
-      // dispensed 
+    digitalWrite(dispense_trigger, HIGH);
+    if (digitalRead(was_dispensed))
+    {
+      // dispensed
       time_obj.dispensed = true;
-      digitalWrite(dispense_trigger , LOW);
-    }else if (digitalRead(timeout)){
+      digitalWrite(dispense_trigger, LOW);
+      bot.sendMessage(CHAT_ID, "Medicine 1 has been dispensed", "");
+    }
+    else if (digitalRead(timeout))
+    {
+      time_obj.dispensed = true;
       send_alert();
+      delay(1000);
+      digitalWrite(dispense_trigger, LOW);
     }
   }
 }
-
-
 
 void check_schedule()
 {
   int hours = timeClient.getHours();
   int minutes = timeClient.getMinutes();
-  int days= timeClient.getDay() != 0 ? timeClient.getDay():7; // 0 is sunday
+  int days = timeClient.getDay() != 0 ? timeClient.getDay() : 7; // 0 is sunday
 
-  switch(days){
-    case 1: //monday
-      if(time11.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time11.dispensed = true;
-        dispense_medicine(1 , dosage11 , time11);
-      }
-      if(time12.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time12.dispensed = true;
-        dispense_medicine(2 , dosage12 , time12);
-      }
-      break;
+  switch (days)
+  {
+  case 1: // monday
+    if (time11.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time11.dispensed = true;
+      dispense_medicine(1, time11.dosage, time11);
+    }
+    if (time12.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time12.dispensed = true;
+      dispense_medicine(2, time12.dosage, time12);
+    }
+    break;
 
-      case 2: //tuesday
-      if(time21.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time21.dispensed = true;
-        dispense_medicine(1 , dosage21 , time21);
-      }
-      if(time22.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time22.dispensed = true;
-        dispense_medicine(2 , dosage22 , time22);
-      }
-      break;
+  case 2: // tuesday
+    if (time21.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time21.dispensed = true;
+      dispense_medicine(1, time21.dosage, time21);
+    }
+    if (time22.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time22.dispensed = true;
+      dispense_medicine(2, time22.dosage, time22);
+    }
+    break;
 
-      case 3: //wednesday
-      if(time31.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time31.dispensed = true;
-        dispense_medicine(1 , dosage31 , time31);
-      }
-      if(time32.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time32.dispensed = true;
-        dispense_medicine(2 , dosage32 , time32);
-      }
-      break;
+  case 3: // wednesday
+    if (time31.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time31.dispensed = true;
+      dispense_medicine(1, time31.dosage, time31);
+    }
+    if (time32.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time32.dispensed = true;
+      dispense_medicine(2, time32.dosage, time32);
+    }
+    break;
 
-      case 4: //thursday
-      if(time41.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time41.dispensed = true;
-        dispense_medicine(1 , dosage41 , time41);
-      }
-      if(time42.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time42.dispensed = true;
-        dispense_medicine(2 , dosage42 , time42);
-      }
-      break;
+  case 4: // thursday
+    if (time41.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time41.dispensed = true;
+      dispense_medicine(1, time41.dosage, time41);
+    }
+    if (time42.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time42.dispensed = true;
+      dispense_medicine(2, time42.dosage, time42);
+    }
+    break;
 
-      case 5: //friday      
-      if(time51.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time51.dispensed = true;
-        dispense_medicine(1 , dosage51 , time51);
-      }
-      if(time52.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time52.dispensed = true;
-        dispense_medicine(2 , dosage52 , time52);
-      }
-      break;
+  case 5: // friday
+    if (time51.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time51.dispensed = true;
+      dispense_medicine(1, time51.dosage, time51);
+    }
+    if (time52.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time52.dispensed = true;
+      dispense_medicine(2, time52.dosage, time52);
+    }
+    break;
 
-      case 6: //saturday
-      if(time61.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time61.dispensed = true;
-        dispense_medicine(1 , dosage61 , time61);
-      }
-      if(time62.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time62.dispensed = true;
-        dispense_medicine(2 , dosage62 , time62);
-      }
-      break;
+  case 6: // saturday
+    if (time61.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time61.dispensed = true;
+      dispense_medicine(1, time61.dosage, time61);
+    }
+    if (time62.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time62.dispensed = true;
+      dispense_medicine(2, time62.dosage, time62);
+    }
+    break;
 
-      case 7: //sunday
-      if(time71.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time71.dispensed = true;
-        dispense_medicine(1 , dosage71 , time71);
-      }
-      if(time72.dispense(hours , minutes))
-      {
-        //dispense medicine
-        //time72.dispensed = true;
-        dispense_medicine(2 , dosage72 , time72);
-      }
-      break;
-
-
-    
+  case 7: // sunday
+    if (time71.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time71.dispensed = true;
+      dispense_medicine(1, time71.dosage, time71);
+    }
+    if (time72.dispense(hours, minutes))
+    {
+      // dispense medicine
+      // time72.dispensed = true;
+      dispense_medicine(2, time72.dosage, time72);
+    }
+    break;
   }
-  
-  
 }
 
 void get_values_from_eeprom()
 {
   if (!EEPROM.begin(EEPROM_SIZE))
   {
-    Serial.println("failed to initialise EEPROM"); return;
+    Serial.println("failed to initialise EEPROM");
+    return;
   }
-  dosage11 = EEPROM.read(0);
-  dosage21 = EEPROM.read(1);
-  dosage31 = EEPROM.read(2);
-  dosage41 = EEPROM.read(3);
-  dosage51 = EEPROM.read(4);
-  dosage61 = EEPROM.read(5);
-  dosage71 = EEPROM.read(6);
-  dosage12 = EEPROM.read(7);
-  dosage22 = EEPROM.read(8);
-  dosage32 = EEPROM.read(9);
-  dosage42 = EEPROM.read(10);
-  dosage52 = EEPROM.read(11);
-  dosage62 = EEPROM.read(12);
-  dosage72 = EEPROM.read(13);
-  time11.get_from_eeprom(14);
-  time21.get_from_eeprom(16);
-  time31.get_from_eeprom(18);
-  time41.get_from_eeprom(20);
-  time51.get_from_eeprom(22);
-  time61.get_from_eeprom(24);
-  time71.get_from_eeprom(26);
-  time12.get_from_eeprom(28);
-  time22.get_from_eeprom(30);
-  time32.get_from_eeprom(32);
-  time42.get_from_eeprom(34);
-  time52.get_from_eeprom(36);
-  time62.get_from_eeprom(38);
-  time72.get_from_eeprom(40);
+  time11.get_from_eeprom(0);
+  time21.get_from_eeprom(3);
+  time31.get_from_eeprom(6);
+  time41.get_from_eeprom(9);
+  time51.get_from_eeprom(12);
+  time61.get_from_eeprom(15);
+  time71.get_from_eeprom(18);
+  time12.get_from_eeprom(21);
+  time22.get_from_eeprom(24);
+  time32.get_from_eeprom(27);
+  time42.get_from_eeprom(30);
+  time52.get_from_eeprom(33);
+  time62.get_from_eeprom(36);
+  time72.get_from_eeprom(39);
 }
 
 void save_values_to_eeprom()
 {
   if (!EEPROM.begin(EEPROM_SIZE))
   {
-    Serial.println("failed to initialise EEPROM"); return;
+    Serial.println("failed to initialise EEPROM");
+    return;
   }
-
-  EEPROM.write(0,dosage11);
-  EEPROM.write(1,dosage21);
-  EEPROM.write(2,dosage31);
-  EEPROM.write(3,dosage41);
-  EEPROM.write(4,dosage51);
-  EEPROM.write(5,dosage61);
-  EEPROM.write(6,dosage71);
-  EEPROM.write(7,dosage12);
-  EEPROM.write(8,dosage22);
-  EEPROM.write(9,dosage32);
-  EEPROM.write(10,dosage42);
-  EEPROM.write(11,dosage52);
-  EEPROM.write(12,dosage62);
-  EEPROM.write(13,dosage72);
-  time11.save_to_eeprom(14);
-  time21.save_to_eeprom(16);
-  time31.save_to_eeprom(18);
-  time41.save_to_eeprom(20);
-  time51.save_to_eeprom(22);
-  time61.save_to_eeprom(24);
-  time71.save_to_eeprom(26);
-  time12.save_to_eeprom(28);
-  time22.save_to_eeprom(30);
-  time32.save_to_eeprom(32);
-  time42.save_to_eeprom(34);
-  time52.save_to_eeprom(36);
-  time62.save_to_eeprom(38);
-  time72.save_to_eeprom(40);
+  time11.save_to_eeprom(0);
+  time21.save_to_eeprom(3);
+  time31.save_to_eeprom(6);
+  time41.save_to_eeprom(9);
+  time51.save_to_eeprom(12);
+  time61.save_to_eeprom(15);
+  time71.save_to_eeprom(18);
+  time12.save_to_eeprom(21);
+  time22.save_to_eeprom(24);
+  time32.save_to_eeprom(27);
+  time42.save_to_eeprom(30);
+  time52.save_to_eeprom(33);
+  time62.save_to_eeprom(36);
+  time72.save_to_eeprom(39);
   EEPROM.commit();
-  
 }
-
-
 
 void notFound(AsyncWebServerRequest *request)
 {
-    request->send(404, "text/plain", "Not found");
+  request->send(404, "text/plain", "Not found");
 }
 
 void setup(void)
 {
-  
-    pinMode(led, OUTPUT);
-    pinMode(dispense_trigger , OUTPUT);
-    digitalWrite(dispense_trigger, LOW);
-    pinMode(was_dispensed , INPUT);
-    pinMode(timeout , INPUT);
 
-    digitalWrite(led, 0);
-    Serial.begin(115200);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    Serial.println("");
+  pinMode(led, OUTPUT);
+  pinMode(dispense_trigger, OUTPUT);
+  digitalWrite(dispense_trigger, LOW);
+  pinMode(was_dispensed, INPUT);
+  pinMode(timeout, INPUT);
 
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.print(".");
-    }
-    digitalWrite(led, 1);
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    get_values_from_eeprom();
-    timeClient.begin();
-    timeClient.setTimeOffset(19800);
-    
+  digitalWrite(led, 0);
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
 
-    
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+  digitalWrite(led, 1);
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  get_values_from_eeprom();
+  timeClient.begin();
+  timeClient.setTimeOffset(19800);
+    // declare redirect.html
+  strcpy(redirect_html, R"rawliteral(<!DOCTYPE html>
+<html>
+   <head>
+   </head>
+   <body>
+   <script>
+   window.location.href='/';
+   </script>
+   </body>
+</html>)rawliteral");
 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-              {
+
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
                 snprintf(index_html, 6000, R"rawliteral(<html>
     <head>
         <title> medicine dispenser</title>
@@ -504,63 +505,81 @@ void setup(void)
             <input type="time" name="time72" value = "%s"></td>
         </tr>
         </table>
-        <label for="dosage">Dosage:</label><input type="submit">
+        <label for="dosage">Dosage:</label><input type="submit"><input type="button" onclick="location.href='/reset';" value="Reset" />
     </form>
 
 
     </body>
 </html>
-)rawliteral" ,dosage11,time11.str,dosage12,time12.str,dosage21,time21.str,dosage22,time22.str,dosage31,time31.str,dosage32,time32.str,dosage41,time41.str,dosage42,time42.str,dosage51,time51.str,dosage52,time52.str,dosage61,time61.str,dosage62,time62.str,dosage71,time71.str,dosage72,time72.str);
+)rawliteral" ,time11.dosage,time11.str,time12.dosage,time12.str,time21.dosage,time21.str,time22.dosage,time22.str,time31.dosage,time31.str,time32.dosage,time32.str,time41.dosage,time41.str,time42.dosage,time42.str,time51.dosage,time51.str,time52.dosage,time52.str,time61.dosage,time61.str,time62.dosage,time62.str,time71.dosage,time71.str,time72.dosage,time72.str);
                 request->send(200, "text/html", index_html); });
-    
 
-    // Send a GET request to <ESP_IP>/get?input1=<inputMessage>
-    server.on("/get", HTTP_GET, [](AsyncWebServerRequest *request)
-              {
+  // reset all values
+  server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+      time11.dispensed = false;
+      time21.dispensed = false;
+      time31.dispensed = false;
+      time41.dispensed = false;
+      time51.dispensed = false;
+      time61.dispensed = false;
+      time71.dispensed = false;
+      time12.dispensed = false;
+      time22.dispensed = false;
+      time32.dispensed = false;
+      time42.dispensed = false;
+      time52.dispensed = false;
+      time62.dispensed = false;
+      time72.dispensed = false;
+    request->send(200, "text/html", redirect_html); });
+
+  // Send a GET request to <ESP_IP>/get?input1=<inputMessage>
+  server.on("/get", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
     
-    
+               
     if (request->hasParam(dosage_1_monday)) {
-      dosage11 = (request->getParam(dosage_1_monday)->value().toInt());
+      time11.dosage = (request->getParam(dosage_1_monday)->value().toInt());
     }
     if (request->hasParam(dosage_1_tuesday)) {
-      dosage21 = (request->getParam(dosage_1_tuesday)->value()).toInt();
+      time21.dosage = (request->getParam(dosage_1_tuesday)->value()).toInt();
     }
     if (request->hasParam(dosage_1_wednesday)) {
-      dosage31 = (request->getParam(dosage_1_wednesday)->value()).toInt();
+      time31.dosage = (request->getParam(dosage_1_wednesday)->value()).toInt();
     }
     if (request->hasParam(dosage_1_thursday)) {
-      dosage41 = (request->getParam(dosage_1_thursday)->value()).toInt();
+      time41.dosage = (request->getParam(dosage_1_thursday)->value()).toInt();
     }
     if (request->hasParam(dosage_1_friday)) {
-      dosage51 = (request->getParam(dosage_1_friday)->value()).toInt();
+      time51.dosage = (request->getParam(dosage_1_friday)->value()).toInt();
     }
     if (request->hasParam(dosage_1_saturday)) {
-      dosage61 = (request->getParam(dosage_1_saturday)->value()).toInt();
+      time61.dosage = (request->getParam(dosage_1_saturday)->value()).toInt();
     }
     if (request->hasParam(dosage_1_sunday)) {
-      dosage71 = (request->getParam(dosage_1_sunday)->value()).toInt();
+      time71.dosage = (request->getParam(dosage_1_sunday)->value()).toInt();
     }
 
     if (request->hasParam(dosage_2_monday)) {
-      dosage12 = (request->getParam(dosage_2_monday)->value()).toInt();
+      time12.dosage = (request->getParam(dosage_2_monday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_tuesday)) {
-      dosage22 = (request->getParam(dosage_2_tuesday)->value()).toInt();
+      time22.dosage = (request->getParam(dosage_2_tuesday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_wednesday)) {
-      dosage32 = (request->getParam(dosage_2_wednesday)->value()).toInt();
+      time32.dosage = (request->getParam(dosage_2_wednesday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_thursday)) {
-      dosage42 = (request->getParam(dosage_2_thursday)->value()).toInt();
+      time42.dosage = (request->getParam(dosage_2_thursday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_friday)) {
-      dosage52 = (request->getParam(dosage_2_friday)->value()).toInt();
+      time52.dosage = (request->getParam(dosage_2_friday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_saturday)) {
-      dosage62 = (request->getParam(dosage_2_saturday)->value()).toInt();
+      time62.dosage = (request->getParam(dosage_2_saturday)->value()).toInt();
     }
     if (request->hasParam(dosage_2_sunday)) {
-      dosage72 = (request->getParam(dosage_2_sunday)->value()).toInt();
+      time72.dosage = (request->getParam(dosage_2_sunday)->value()).toInt();
     }
 
     if (request->hasParam("time11")) {
@@ -621,14 +640,24 @@ void setup(void)
     }
   
     save_values_to_eeprom();
+//     snprintf(redirect_html, 500,  R"rawliteral(<!DOCTYPE html>
+//<html>
+//   <head>
+//   </head>
+//   <body>
+//   <script>
+//   window.location.href='/';
+//   </script>
+//   </body>
+//</html>)rawliteral");
 
-    
-    request->send(200, "text/html", "HTTP GET request sent to your ESP on input field "); });
-    
-    
-    server.onNotFound(notFound);
-    server.begin();
-    Serial.println("HTTP server started");
+
+
+    request->send(200, "text/html", redirect_html); });
+
+  server.onNotFound(notFound);
+  server.begin();
+  Serial.println("HTTP server started");
 }
 
 void loop(void)
