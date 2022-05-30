@@ -13,8 +13,8 @@
 // communication between arduino
 // check schedule
 
-#define BOTtoken "5225503031:AAFcshlLqmddsVeqWmN0oBo8Dxs_HQNo0t4"
-#define CHAT_ID "1171279947"
+#define BOTtoken "xyz"
+#define CHAT_ID "xyz"
 #define EEPROM_SIZE 64
 #define dispense_trigger 13
 #define was_dispensed 14
@@ -63,7 +63,6 @@ const char *dosage_2_sunday = "dosage72";
 const int led = 2;
 char index_html[6000];
 char redirect_html[500];
-
 
 class Medicine
 {
@@ -405,7 +404,7 @@ void setup(void)
   get_values_from_eeprom();
   timeClient.begin();
   timeClient.setTimeOffset(19800);
-    // declare redirect.html
+  // declare redirect.html
   strcpy(redirect_html, R"rawliteral(<!DOCTYPE html>
 <html>
    <head>
@@ -416,8 +415,6 @@ void setup(void)
    </script>
    </body>
 </html>)rawliteral");
-
-
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
             {
